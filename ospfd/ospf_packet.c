@@ -2055,7 +2055,42 @@ static void ospf_ls_upd(struct ospf *ospf, struct ip *iph,
 					zlog_debug("%s: Link State Update[%s]: router-id is local, but has higher seq num",
 						   __func__, dump_lsa_key(lsa));
 				current->data->ls_seqnum = lsa->data->ls_seqnum;
-				ospf_lsa_refresh(oi->ospf, current);
+
+				/*
+				 * Bumping ls_seqnum in place invalidates current's
+				 * LS checksum. ospf_lsa_refresh() normally
+				 * re-originates a fresh instance (recomputing the
+				 * checksum) and returns it. But for some
+				 * self-originated LSAs it declines to re-originate
+				 * and returns NULL -- e.g. a network-LSA on an
+				 * interface where we are no longer the DR
+				 * (ospf_network_lsa_refresh() bails on
+				 * oi->state != ISM_DR). In that case the in-place
+				 * bump above would leave a self-originated LSA whose
+				 * stored checksum no longer matches its body; every
+				 * neighbor then rejects it with "LSA checksum error"
+				 * and it can neither be flushed nor resynced,
+				 * wedging the adjacency in Loading.
+				 *
+				 * If refresh declined to re-originate, we no longer
+				 * wish to originate this LSA (RFC 2328 Section 13.4)
+				 * -- flush it instead. Re-look up the instance
+				 * rather than reuse current, which ospf_lsa_refresh()
+				 * may have freed, and repair the checksum so the
+				 * MaxAge self-flush is accepted by neighbors.
+				 */
+				if (ospf_lsa_refresh(oi->ospf, current) == NULL) {
+					struct ospf_lsa *self;
+
+					self = ospf_lsa_lookup(oi->ospf, oi->area,
+							       lsa->data->type,
+							       lsa->data->id,
+							       lsa->data->adv_router);
+					if (self != NULL) {
+						ospf_lsa_checksum(self->data);
+						ospf_lsa_flush(oi->ospf, self);
+					}
+				}
 				/* Discarding without ACK may cause neighbor to retransmit the stale LSA
 				 * until the refreshed LSA arrives, make sure that doesn't happen.
 				 */
