@@ -2892,7 +2892,7 @@ DEFPY (bgp_use_underlying_nexthop_weight,
 	VTY_DECLVAR_CONTEXT(bgp, bgp);
 
 	if (no)
-		UNSET_FLAG(bgp->flags, BGP_WECMP_BEHAVIOR_USE_RECURSIVE_VALUE);
+		UNSET_FLAG(bgp->flags, BGP_FLAG_USE_RECURSIVE_WEIGHT);
 	else
 		SET_FLAG(bgp->flags, BGP_FLAG_USE_RECURSIVE_WEIGHT);
 
@@ -22574,6 +22574,9 @@ int bgp_config_write(struct vty *vty)
 				vty_out(vty,
 					" bgp graceful-restart preserve-fw-state\n");
 
+		if (CHECK_FLAG(bgp->flags, BGP_FLAG_GR_DISABLE_EOR))
+			vty_out(vty, " bgp graceful-restart disable-eor\n");
+
 		/* BGP TCP keepalive */
 		bgp_config_tcp_keepalive(vty, bgp);
 
@@ -22708,7 +22711,7 @@ int bgp_config_write(struct vty *vty)
 		if (bgp->allow_martian)
 			vty_out(vty, " bgp allow-martian-nexthop\n");
 
-		if (CHECK_FLAG(bgp->flags, BGP_WECMP_BEHAVIOR_USE_RECURSIVE_VALUE))
+		if (CHECK_FLAG(bgp->flags, BGP_FLAG_USE_RECURSIVE_WEIGHT))
 			vty_out(vty, " use-underlays-nexthop-weight\n");
 
 		if (bgp->fast_convergence)
